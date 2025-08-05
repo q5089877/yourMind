@@ -74,135 +74,139 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-functions-compat.js"></script>
 
-    <script>
-        // --- 1. Firebase 設定 (已更新為您自己的設定) ---
-        const firebaseConfig = {
-          apiKey: "AIzaSyBy4aKghdWxD0JGXuLVhD62zUfQshosnvU",
-          authDomain: "yourmind-bde91.firebaseapp.com",
-          projectId: "yourmind-bde91",
-          storageBucket: "yourmind-bde91.appspot.com",
-          messagingSenderId: "1068416630906",
-          appId: "1:1068416630906:web:5effc85464bbfac552fbc3",
-          measurementId: "G-Y88EVM5KVG"
-        };
+ <script>
+    // --- 1. Firebase 設定 (維持不變) ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyBy4aKghdWxD0JGXuLVhD62zUfQshosnvU",
+      authDomain: "yourmind-bde91.firebaseapp.com",
+      projectId: "yourmind-bde91",
+      storageBucket: "yourmind-bde91.appspot.com",
+      messagingSenderId: "1068416630906",
+      appId: "1:1068416630906:web:5effc85464bbfac552fbc3",
+      measurementId: "G-Y88EVM5KVG"
+    };
 
-        // --- 2. 初始化 Firebase ---
-        firebase.initializeApp(firebaseConfig);
-        const functions = firebase.functions();
+    // --- 2. 取得頁面元素 ---
+    const contentArea = document.getElementById('content-area');
+    const chatContainer = document.getElementById('chat-container');
+    const chatForm = document.getElementById('chat-form');
+    const messageInput = document.getElementById('message-input');
+    const initialQuestionsContainer = document.getElementById('initial-questions');
+    const questionButtons = document.querySelectorAll('.question-btn');
+    const submitButton = chatForm.querySelector('button[type="submit"]');
 
-        // --- 3. 取得頁面元素 ---
-        const contentArea = document.getElementById('content-area');
-        const chatContainer = document.getElementById('chat-container');
-        const chatForm = document.getElementById('chat-form');
-        const messageInput = document.getElementById('message-input');
-        const initialQuestionsContainer = document.getElementById('initial-questions');
-        const questionButtons = document.querySelectorAll('.question-btn');
-        const submitButton = chatForm.querySelector('button[type="submit"]');
+    let conversationHistory = [];
 
-        // 用來儲存對話歷史紀錄
-        let conversationHistory = [];
+    // --- 3. 核心功能函式 ---
 
-        // --- 4. 核心功能函式 ---
+    function scrollToBottom() {
+        contentArea.scrollTop = contentArea.scrollHeight;
+    }
 
-        // 自動捲動到最底部
-        function scrollToBottom() {
-            contentArea.scrollTop = contentArea.scrollHeight;
+    function appendMessage(text, sender) {
+        const messageWrapper = document.createElement('div');
+        const messageBubble = document.createElement('div');
+        messageWrapper.classList.add('flex', 'mb-4', 'w-full');
+        messageBubble.classList.add('px-4', 'py-3', 'rounded-xl', 'max-w-md', 'lg:max-w-lg');
+
+        if (sender === 'user') {
+            messageWrapper.classList.add('justify-end');
+            messageBubble.classList.add('bg-teal-600', 'text-white');
+            messageBubble.textContent = text;
+        } else if (sender === 'ai') {
+            messageWrapper.classList.add('justify-start');
+            messageBubble.classList.add('bg-slate-200', 'text-slate-800');
+            messageBubble.textContent = text;
+        } else if (sender === 'loading') {
+            messageWrapper.id = 'loading-indicator';
+            messageWrapper.classList.add('justify-start');
+            messageBubble.classList.add('bg-slate-200', 'text-slate-500');
+            messageBubble.innerHTML = `<div class="flex items-center"><span class="mr-2">正在傾聽...</span><div class="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-500"></div></div>`;
         }
 
-        // 在畫面上新增一則訊息
-        function appendMessage(text, sender) {
-            const messageWrapper = document.createElement('div');
-            const messageBubble = document.createElement('div');
-            messageWrapper.classList.add('flex', 'mb-4', 'w-full');
-            messageBubble.classList.add('px-4', 'py-3', 'rounded-xl', 'max-w-md', 'lg:max-w-lg');
+        messageWrapper.appendChild(messageBubble);
+        chatContainer.appendChild(messageWrapper);
+        scrollToBottom();
+        return messageWrapper;
+    }
 
-            if (sender === 'user') {
-                messageWrapper.classList.add('justify-end');
-                messageBubble.classList.add('bg-teal-600', 'text-white');
-                messageBubble.textContent = text;
-            } else if (sender === 'ai') {
-                messageWrapper.classList.add('justify-start');
-                messageBubble.classList.add('bg-slate-200', 'text-slate-800');
-                messageBubble.textContent = text;
-            } else if (sender === 'loading') {
-                messageWrapper.id = 'loading-indicator';
-                messageWrapper.classList.add('justify-start');
-                messageBubble.classList.add('bg-slate-200', 'text-slate-500');
-                messageBubble.innerHTML = `<div class="flex items-center"><span class="mr-2">正在傾聽...</span><div class="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-500"></div></div>`;
-            }
+    // (關鍵修改) 改用標準 fetch 呼叫後端
+    async function sendMessageToAI(userMessage) {
+        conversationHistory.push({ role: "user", parts: [{ text: userMessage }] });
 
-            messageWrapper.appendChild(messageBubble);
-            chatContainer.appendChild(messageWrapper);
-            scrollToBottom();
-            return messageWrapper;
-        }
+        const loadingIndicator = appendMessage('', 'loading');
+        toggleInput(false);
 
-        // 傳送訊息到 Firebase Cloud Function
-        async function sendMessageToAI(userMessage) {
-            conversationHistory.push({ role: "user", parts: [{ text: userMessage }] });
+        // 您的 Cloud Function 公開網址
+        const functionUrl = 'https://us-central1-yourmind-bde91.cloudfunctions.net/askGemini';
 
-            const loadingIndicator = appendMessage('', 'loading');
-            toggleInput(false);
-
-            try {
-                // 呼叫我們在 Firebase 建立的後端函式
-                const askGemini = functions.httpsCallable('askGemini');
-                const result = await askGemini({ prompt: userMessage, history: conversationHistory });
-
-                const aiResponse = result.data.text;
-
-                // 將 AI 回應加入歷史紀錄並顯示
-                conversationHistory.push({ role: "model", parts: [{ text: aiResponse }] });
-                loadingIndicator.remove();
-                appendMessage(aiResponse, 'ai');
-
-            } catch (error) {
-                console.error("呼叫 Firebase Function 時發生錯誤:", error);
-                loadingIndicator.remove();
-                appendMessage("抱歉，連線似乎有點問題，請稍後再試。", 'ai');
-            } finally {
-                toggleInput(true);
-            }
-        }
-
-        // 切換輸入框的啟用/禁用狀態
-        function toggleInput(enabled) {
-            messageInput.disabled = !enabled;
-            submitButton.disabled = !enabled;
-            if(enabled) { messageInput.focus(); }
-        }
-
-        // --- 5. 設定事件監聽器 ---
-
-        // 監聽表單提交事件
-        chatForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const userMessage = messageInput.value.trim();
-            if (userMessage) {
-                if (!initialQuestionsContainer.classList.contains('hidden')) {
-                    initialQuestionsContainer.classList.add('hidden');
-                }
-                appendMessage(userMessage, 'user');
-                sendMessageToAI(userMessage);
-                messageInput.value = '';
-            }
-        });
-
-        // 監聽初始問題按鈕點擊事件
-        questionButtons.forEach(button => {
-            button.addEventListener('click', () => {
-                const questionText = button.textContent;
-                initialQuestionsContainer.classList.add('hidden');
-                appendMessage(questionText, 'user');
-                sendMessageToAI(questionText);
+        try {
+            const response = await fetch(functionUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                // 將資料包裝在 'data' 物件中
+                body: JSON.stringify({ data: { prompt: userMessage, history: conversationHistory } }),
             });
-            button.classList.add('w-full', 'p-3', 'bg-white', 'border', 'border-slate-300', 'rounded-lg', 'text-slate-700', 'text-center', 'hover:bg-teal-50', 'hover:border-teal-400', 'transition', 'duration-200', 'cursor-pointer', 'font-medium', 'text-sm');
-        });
 
-        // --- 6. 頁面初始載入 ---
-        window.addEventListener('load', () => {
-            appendMessage("你好，我是你的 AI 心理夥伴「心語」。有什麼想聊聊的嗎？", 'ai');
+            if (!response.ok) {
+                // 如果伺服器回傳錯誤，也嘗試解析錯誤訊息
+                const errorData = await response.json();
+                throw new Error(errorData.error.message || '伺服器錯誤');
+            }
+
+            const result = await response.json();
+            // 從回傳的 JSON 中取出結果
+            const aiResponse = result.data.text;
+
+            conversationHistory.push({ role: "model", parts: [{ text: aiResponse }] });
+            loadingIndicator.remove();
+            appendMessage(aiResponse, 'ai');
+
+        } catch (error) {
+            console.error("呼叫後端函式時發生錯誤:", error);
+            loadingIndicator.remove();
+            appendMessage("抱歉，連線似乎有點問題，請稍後再試。", 'ai');
+        } finally {
+            toggleInput(true);
+        }
+    }
+
+    function toggleInput(enabled) {
+        messageInput.disabled = !enabled;
+        submitButton.disabled = !enabled;
+        if(enabled) { messageInput.focus(); }
+    }
+
+    // --- 4. 設定事件監聽器 (維持不變) ---
+    chatForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const userMessage = messageInput.value.trim();
+        if (userMessage) {
+            if (!initialQuestionsContainer.classList.contains('hidden')) {
+                initialQuestionsContainer.classList.add('hidden');
+            }
+            appendMessage(userMessage, 'user');
+            sendMessageToAI(userMessage);
+            messageInput.value = '';
+        }
+    });
+
+    questionButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const questionText = button.textContent;
+            initialQuestionsContainer.classList.add('hidden');
+            appendMessage(questionText, 'user');
+            sendMessageToAI(questionText);
         });
-    </script>
+        button.classList.add('w-full', 'p-3', 'bg-white', 'border', 'border-slate-300', 'rounded-lg', 'text-slate-700', 'text-center', 'hover:bg-teal-50', 'hover:border-teal-400', 'transition', 'duration-200', 'cursor-pointer', 'font-medium', 'text-sm');
+    });
+
+    window.addEventListener('load', () => {
+        appendMessage("你好，我是你的 AI 心理夥伴「心語」。有什麼想聊聊的嗎？", 'ai');
+    });
+</script>
+
 </body>
 </html>
